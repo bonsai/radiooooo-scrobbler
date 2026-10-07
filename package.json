@@ -20,6 +20,7 @@
   "devDependencies": {
     "@types/chrome": "0.0.287",
     "bun": "latest",
+    "esbuild": "^0.28.2",
     "jsdom": "^25.0.1",
     "playwright-core": "^1.49.1",
     "typescript": "5.6.3"

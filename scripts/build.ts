@@ -61,20 +61,26 @@ const common: Partial<BunImport.BuildConfig> = {
   bundle: true,
   platform: "browser",
   logLevel: "info",
-  banner: {
-    js: `/* radiooooo-scrobbler ${pkg.version} */`,
-  },
+  banner: `/* radiooooo-scrobbler ${pkg.version} */`,
 };
 
-function optionsFor(out: string, outfile: string): BunImport.BuildConfig {
+function optionsFor(out: string): BunImport.BuildConfig {
   const isWorker = out === "background";
   return {
     ...common,
     entryPoints: [path.join(srcDir, bundles.find((b) => b.out === out)!.in)],
     format: isWorker ? "esm" : "iife",
-    outfile,
-    target: "chrome116",
+    outdir: outDir,
+    naming: `${out}.[ext]`,
+    target: "browser",
   };
+}
+
+function ensureSuccess(result: Awaited<ReturnType<typeof Bun.build>>, out: string): void {
+  if (!result.success) {
+    const detail = (result.logs ?? []).map((l) => l.message).join("\n");
+    throw new Error(`build failed for ${out}:\n${detail}`);
+  }
 }
 
 async function buildOnce(): Promise<void> {
@@ -82,8 +88,7 @@ async function buildOnce(): Promise<void> {
   await mkdir(outDir, { recursive: true });
 
   for (const b of bundles) {
-    const outfile = path.join(outDir, `${b.out}.js`);
-    await Bun.build(optionsFor(b.out, outfile));
+    ensureSuccess(await Bun.build(optionsFor(b.out)), b.out);
   }
 
   await copyStatic(outDir);
@@ -97,19 +102,20 @@ async function buildOnce(): Promise<void> {
 
 if (watch) {
   for (const b of bundles) {
-    const outfile = path.join(outDir, `${b.out}.js`);
+    await mkdir(outDir, { recursive: true });
+    await copyStatic(outDir);
     await Bun.build({
-      ...optionsFor(b.out, outfile),
+      ...optionsFor(b.out),
       watch: true,
       onEnd: (result) => {
-        for (const error of result.errors) {
-          console.error(`[watch] ${error.text}`);
+        if (!result.success) {
+          for (const error of result.logs ?? []) {
+            console.error(`[watch] ${error.message}`);
+          }
         }
       },
     });
   }
-  await mkdir(outDir, { recursive: true });
-  await copyStatic(outDir);
   console.log(`watching -> ${outDir}`);
   // Keep the process alive; Bun keeps it running while watchers are active.
   await new Promise<never>(() => {});
